@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets
+.env
+.env.local
+
+# Generated data and artifacts
+data/*.db
+data/*.db-journal
+data/chip_production_data.csv
+charts/
+*.png
+!docs/demo_screenshots/*.png
+!docs/architecture.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
