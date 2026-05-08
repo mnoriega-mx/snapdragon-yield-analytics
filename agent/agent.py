@@ -29,7 +29,8 @@ from dotenv import load_dotenv
 from . import tools as tool_catalog
 from .prompts import SYSTEM_PROMPT
 
-load_dotenv()
+# override=True so that an empty/stale shell value cannot mask the .env key.
+load_dotenv(override=True)
 
 
 DEFAULT_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -49,6 +50,13 @@ class TraceStep:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     stop_reason: str | None = None
     duration_ms: float = 0.0
+    # Token usage from response.usage. Cache fields are 0 when caching is
+    # not in effect; non-zero values prove the cache breakpoints are
+    # actually firing.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
 
 
 @dataclass
@@ -63,13 +71,29 @@ class AgentResult:
         """Format the trace as plain text for CLI output."""
         lines: list[str] = []
         for step in self.trace:
-            lines.append(f"--- step {step.iteration} ({step.duration_ms:.0f} ms, stop={step.stop_reason}) ---")
+            lines.append(
+                f"--- step {step.iteration} ({step.duration_ms:.0f} ms, "
+                f"in={step.input_tokens}, out={step.output_tokens}, "
+                f"cache_w={step.cache_creation_tokens}, cache_r={step.cache_read_tokens}, "
+                f"stop={step.stop_reason}) ---"
+            )
             for text in step.text_blocks:
                 lines.append(f"[claude] {text.strip()}")
             for call in step.tool_calls:
                 args = call["input"]
                 summary = call.get("result_summary", "")
                 lines.append(f"[tool ] {call['name']}({_pretty_args(args)}) -> {summary}")
+        # Aggregate totals to make it obvious whether caching is actually firing.
+        total_in = sum(s.input_tokens for s in self.trace)
+        total_out = sum(s.output_tokens for s in self.trace)
+        total_cw = sum(s.cache_creation_tokens for s in self.trace)
+        total_cr = sum(s.cache_read_tokens for s in self.trace)
+        cache_pct = 100 * total_cr / max(total_in + total_cr, 1)
+        lines.append(
+            f"--- totals: in={total_in}, out={total_out}, "
+            f"cache_w={total_cw}, cache_r={total_cr}, "
+            f"hit_rate={cache_pct:.1f} percent ---"
+        )
         lines.append("--- final answer ---")
         lines.append(self.answer.strip())
         return "\n".join(lines)
@@ -85,6 +109,62 @@ def _pretty_args(args: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+# ---------------------------------------------------------------------------
+# Prompt caching helpers
+# ---------------------------------------------------------------------------
+#
+# Anthropic's rate limits cap input tokens per minute, but cached tokens do
+# not count toward the limit, and cache reads cost only 10 percent of the
+# normal input rate. The agent loop sends the same system prompt and tool
+# definitions on every iteration plus a conversation that grows by one
+# user/assistant pair each round. Both are perfect cache targets.
+#
+# Strategy: two cache breakpoints per request.
+#   1. cache_control on the last tool, which caches the whole tools list
+#      (and the system block before it) as a fixed, long-lived segment.
+#   2. cache_control on the last content block of the last message, which
+#      caches the conversation prefix so each new iteration only pays
+#      full price for the new turn.
+#
+# The 1024-token-per-breakpoint minimum is comfortably exceeded by the
+# tools list alone, so both breakpoints effectively cache.
+
+
+def _tools_with_cache(schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a shallow copy of the tool schemas with cache_control on
+    the last entry, so the system block and the entire tools list are
+    cached as one segment."""
+    if not schemas:
+        return schemas
+    out = [dict(s) for s in schemas]
+    out[-1] = {**out[-1], "cache_control": {"type": "ephemeral"}}
+    return out
+
+
+def _messages_with_cache(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a shallow copy of the messages list with cache_control on
+    the LAST content block of the LAST message, so the conversation
+    prefix becomes cacheable for the next request."""
+    if not messages:
+        return messages
+    out = [dict(m) for m in messages]
+    last = out[-1]
+    content = last.get("content")
+    if isinstance(content, str):
+        last["content"] = [
+            {
+                "type": "text",
+                "text": content,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+    elif isinstance(content, list) and content:
+        new_blocks = [dict(b) for b in content]
+        new_blocks[-1] = {**new_blocks[-1], "cache_control": {"type": "ephemeral"}}
+        last["content"] = new_blocks
+    return out
+
+
 def _summarize_tool_result(result: dict[str, Any]) -> str:
     """Compact one-line summary of a tool result for the trace."""
     if "error" in result:
@@ -95,6 +175,26 @@ def _summarize_tool_result(result: dict[str, Any]) -> str:
             f"summary total={s.get('total_chips')} "
             f"passed={s.get('passed')} failed={s.get('failed')} "
             f"yield={s.get('yield')}"
+        )
+    if "ucl" in result and "lcl" in result:
+        return (
+            f"spc {result.get('metric')} "
+            f"mean={result.get('mean')} std={result.get('std')} "
+            f"ooc={len(result.get('out_of_control', []))}"
+        )
+    if "anomalous_windows" in result:
+        return (
+            f"anomalies n={result.get('n_total')} "
+            f"failed={result.get('n_failed')} "
+            f"flagged_hours={len(result.get('anomalous_windows', []))}"
+        )
+    if "chart_type" in result and "filename" in result:
+        return f"chart {result.get('chart_type')} -> {result.get('filename')}"
+    if "report" in result and "n_findings" in result:
+        return (
+            f"report findings={result.get('n_findings')} "
+            f"recs={result.get('n_recommendations')} "
+            f"chars={result.get('char_count')}"
         )
     rc = result.get("row_count")
     truncated = result.get("truncated")
@@ -114,6 +214,7 @@ def run_agent(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     system_prompt: str = SYSTEM_PROMPT,
+    on_step: Any | None = None,
 ) -> AgentResult:
     """Send `question` to Claude and run the tool-use loop to completion.
 
@@ -129,6 +230,9 @@ def run_agent(
             Each iteration is one Messages API call.
         system_prompt: System prompt to use. Override for tests or custom
             personas.
+        on_step: Optional callable invoked with the completed TraceStep
+            after each iteration. The Streamlit UI uses this to stream
+            tool calls into a status panel as they happen.
 
     Returns:
         AgentResult with the final answer, the structured trace, and timing.
@@ -158,11 +262,17 @@ def run_agent(
             model=model,
             max_tokens=max_tokens,
             system=system_prompt,
-            tools=tool_catalog.TOOL_SCHEMAS,
-            messages=messages,
+            tools=_tools_with_cache(tool_catalog.TOOL_SCHEMAS),
+            messages=_messages_with_cache(messages),
         )
 
         step = TraceStep(iteration=iteration, stop_reason=response.stop_reason)
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            step.input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+            step.output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+            step.cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+            step.cache_read_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
         tool_uses: list[Any] = []
         assistant_content: list[dict[str, Any]] = []
 
@@ -186,6 +296,8 @@ def run_agent(
         if response.stop_reason != "tool_use":
             step.duration_ms = (time.time() - step_start) * 1000
             trace.append(step)
+            if on_step is not None:
+                on_step(step)
             answer = "\n\n".join(step.text_blocks).strip()
             return AgentResult(
                 answer=answer or "(no text returned)",
@@ -204,6 +316,10 @@ def run_agent(
                 "name": tu.name,
                 "input": tu.input,
                 "result_summary": summary,
+                # Surface a couple of well-known artifacts so a UI can
+                # pull them out without re-parsing the raw tool result.
+                "chart_path": result.get("path") if tu.name == "generate_chart" else None,
+                "report": result.get("report") if tu.name == "write_summary_report" else None,
             })
             tool_result_blocks.append({
                 "type": "tool_result",
@@ -214,6 +330,8 @@ def run_agent(
         messages.append({"role": "user", "content": tool_result_blocks})
         step.duration_ms = (time.time() - step_start) * 1000
         trace.append(step)
+        if on_step is not None:
+            on_step(step)
 
     # Hit the iteration cap without a final answer.
     return AgentResult(

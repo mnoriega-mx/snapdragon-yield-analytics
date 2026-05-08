@@ -575,7 +575,7 @@ In an interview, the elevator pitch is:
 
 These are non-negotiable while building the project:
 
-- **No double dashes (`--`) or em dashes (`—`) anywhere in writing**: README, comments, summary outputs, cover letter language. This is a personal style rule.
+- **No em dashes (`—`) anywhere in writing**: README, comments, summary outputs, cover letter language. Double dashes (`--`) are fine and can be used freely. This is a personal style rule.
 - **Snapdragon, not standalone Hexagon**: the product is the SoC, the focus is the NPU subsystem. Never imply "Hexagon NPU factory."
 - **No invented chip specs that contradict reality**: 50 TOPS for SD8Gen5 is plausible (45 today, modest projection forward). Don't invent 200 TOPS or other absurd numbers.
 - **The agent must use predefined tools, not free-form code execution**: this matches the JD's "predefined code paths" language and the actual FSDO requirement.

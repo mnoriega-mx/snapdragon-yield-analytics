@@ -20,15 +20,31 @@ The full brief lives at `docs/project_brief.md`. Read that before doing anything
 
 **Day 2 done.** System prompt, the first tool (`query_database`), the Claude API agent loop, a CLI runner, and unit tests for the tool.
 
-**Day 3 next.** Implement Tool 2 (`calculate_spc_metrics`) and Tool 3 (`detect_anomalies`). Both are pure-Python over pandas/scipy, no API calls.
+**Day 3 done.** Tool 2 (`calculate_spc_metrics`) and Tool 3 (`detect_anomalies`), both pure pandas/scipy with no API calls. Shared `_load_dataframe` helper reads windows into pandas via the same read-only connection. Tool 2 reports mean, sample std, UCL/LCL at mean +/- 3 sigma, plus per-subgroup means (by hour or wafer_id) and out-of-control flags. Tool 3 buckets the window into hourly groups, flags hours over a failure-rate threshold, and Pearson-correlates each metric's hourly mean with the hourly failure rate.
 
-Current test status: 26 tests passing (11 data, 15 tools).
+**Day 4 done.** Tool 4 (`generate_chart`) with three matplotlib templates: `spc_chart` (hourly mean line with mean and +/- 3 sigma reference lines, OOC hours highlighted), `correlation_chart` (two metrics on dual y-axes with Pearson r in the title), `failure_timeline` (one dot per failed chip, y-axis = failure_reason, color by reason). Headless `Agg` backend so charts render in tests; PNGs land in `charts/` (or a caller-supplied `output_dir`) with a microsecond-stamped filename and the tool returns the absolute path. The agent loop's `_summarize_tool_result` was extended to give compact one-line traces for SPC, anomalies, and chart calls instead of the prior `row_count=None`.
+
+**Day 5 done.** Tool 5 (`write_summary_report`) renders a markdown yield report from `findings` (list of `{category, description, evidence}`), `root_cause_hypothesis`, and `recommendations`. `run_agent` gained an optional `on_step` callback called after each iteration; each `tool_call` entry now also records `chart_path` (for `generate_chart`) and `report` (for `write_summary_report`) so a UI can pull artifacts out without re-parsing the raw tool result. The system prompt got a new principle nudging the agent to finish substantive yield investigations with `write_summary_report`. The Streamlit UI lives at `ui/app.py`: sidebar with sample questions and project framing, question input, live `st.status` panel that streams each tool call as it happens, then the rendered layout (charts inline, report markdown, agent prose answer, full trace in a collapsible expander). Run with `streamlit run ui/app.py`.
+
+**Day 6 in progress.**
+
+- **Multi-day data layer.** `data/generate_data.py` was refactored to produce N production days (default `DAYS_DEFAULT = 7`), with the drift excursion injected only on the LAST day. Wafer ids and chip ids are unique across days (W000-W099 on day 1, W100-W199 on day 2, etc.). The bundled database (`data/chip_production.db`) now holds 70,000 rows. The agent's system prompt teaches it that "today" means the most recent day, found via `query_database(query_type='summary')`'s `last_timestamp` field. So the canonical drift day for the demo is 2026-04-07, not 2026-04-01.
+- **Dashboard panel in Streamlit.** Above the question input, the app shows a "Today's production" section: KPI cards (chips tested, yield with delta vs prior 6-day average, failures with friendly labels, status pill: Alert/Watch/OK), a comparison caption, and a 24-hour yield trend line chart. Data is fetched via `query_database` with a 60-second `st.cache_data` TTL. Sample-question buttons use `on_click` callbacks (canonical Streamlit pattern), and the live trace shows friendly labels ("Generating spc chart for npu_tops") instead of raw function calls.
+- **Token-budget changes.** The summary tool now returns a compact `daily_yield` rollup plus only the last day's `hourly_yield` for multi-day windows (12KB → 2.5KB JSON). The system prompt nudges the agent to scope follow-up calls to single-day windows.
+- **Prompt caching.** `agent/agent.py` adds two `cache_control` breakpoints per request via `_tools_with_cache` (caches the system + tools prefix, ~3.5K tokens) and `_messages_with_cache` (caches the conversation prefix up through the latest message). Cache reads cost 10 percent and do not count toward the rate limit, so a Tier 1 key (30K input tokens/min) can comfortably handle a 4-5 iteration agent run.
+- **Prompt tweaks.** Added a "data swim lane" principle (no VRMs, voltage rails, fab steps). Style block now allows `--` (double dashes); only em dashes are forbidden.
+- **Response restructure.** The structured markdown from `write_summary_report` is now the canonical user-facing deliverable. The agent's final assistant text is a single short acknowledgement; there is no separate prose "cover note" or "bottom line". `write_summary_report` was renamed `bottom_line` to `root_cause_hypothesis` (matching the brief), and the section header changed from "## Bottom line" to "## Root cause hypothesis". Findings carry `{{chart:...}}` tokens inline in their `description` field where a chart visually reinforces a specific finding; the Streamlit UI's `_render_markdown_with_charts` expands those tokens into inline charts. The UI no longer echoes the question or renders the prose answer when a report exists.
+- **`load_dotenv(override=True)`** so an empty shell-level `ANTHROPIC_API_KEY` cannot mask the real key in `.env`.
+
+**Day 6 still pending.** End-to-end agent test (`tests/test_agent_e2e.py`), formal scenario validation, basic logging.
+
+Current test status: 67 tests passing (12 data, 55 tools).
 
 ## Critical project rules (do not violate)
 
 These come from section 13 of the brief. They are non-negotiable.
 
-1. **No double dashes (`--`) or em dashes (`—`) anywhere.** Not in code comments, not in user-visible text, not in the README, not in the agent's system prompt. This is a personal style rule for Mauricio. Use commas, parentheses, or semicolons instead.
+1. **No em dashes (`—`) anywhere.** Not in code comments, not in user-visible text, not in the README, not in the agent's system prompt. Use commas, parentheses, semicolons, or `--` instead. Double dashes (`--`) are fine and can be used freely. (Earlier copies of this file said "no double dashes" too; that was a misnaming. The real rule is em dashes only.)
 2. **The product is "Snapdragon SoC", not "Hexagon NPU".** The Hexagon NPU is one subsystem on the chip. Never imply Qualcomm makes a standalone NPU or runs a "Hexagon NPU factory". The framing is always "Snapdragon production with focus on Hexagon NPU testing".
 3. **Don't invent absurd specs.** Section 15 of the brief lists the canonical numbers: 50 TOPS target, 48 TOPS pass, 3.2 W target, 3.5 W pass, 3nm process, 10,000 chips/day. Don't make up numbers that contradict these.
 4. **The agent uses predefined tools only, no free-form code execution.** This matches the FSDO job description's "predefined code paths" language and is one of the things the demo is meant to showcase.
@@ -57,10 +73,11 @@ These come from section 13 of the brief. They are non-negotiable.
 ├── agent/
 │   ├── __init__.py
 │   ├── prompts.py              System prompt for the agent
-│   ├── tools.py                Tool catalog (1 of 5 tools implemented so far)
+│   ├── tools.py                Tool catalog (5 of 5 tools implemented)
 │   ├── agent.py                Claude API tool-use loop
 │   └── run.py                  CLI runner: python -m agent.run "your question"
-├── ui/                         (empty for now, Streamlit app on Day 5)
+├── ui/
+│   └── app.py                  Streamlit UI: streamlit run ui/app.py
 ├── tests/
 │   ├── conftest.py             Shared fixtures (chip_db builds a fresh test DB)
 │   ├── test_data_generation.py
@@ -110,12 +127,17 @@ python -m agent.run "How many chips were produced today?"
 python -m agent.run --trace "Why did yield drop today?"
 ```
 
+Launch the Streamlit UI:
+```
+streamlit run ui/app.py
+```
+
 ## Mauricio's preferences
 
-- Avoids double dashes in writing (the `--` style). Use commas or other punctuation.
+- Avoids em dashes (`—`) in writing. Double dashes (`--`) are fine.
 - Prefers prose over heavy bullet/header formatting in chat responses.
 - Is not a deep semiconductor expert; he is a data/AI person making a portfolio piece. Don't pretend otherwise in the README or any user-facing copy. Stay in the data and AI swim lane.
-- Currently running anaconda Python 3.9, no project venv yet. Code is compatible with 3.9 but a venv is recommended.
+- Project venv lives at `./venv`, built from homebrew Python 3.12 (`/opt/homebrew/bin/python3.12`). Activate with `source venv/bin/activate`, or invoke directly via `./venv/bin/python` and `./venv/bin/pytest`. Anaconda Python 3.9 is still on the machine but is not the venv base.
 
 ## When you start a new session
 

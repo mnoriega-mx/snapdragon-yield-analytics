@@ -74,6 +74,19 @@ def main(argv: list[str] | None = None) -> int:
             print()
 
     print(f"[answer] {result.answer}")
+
+    # The agent's structured report is the user-facing deliverable; the
+    # answer text is just an acknowledgement. Print the latest report so
+    # CLI smoke tests show the actual analysis, not just the cover line.
+    last_report = None
+    for step in result.trace:
+        for call in step.tool_calls:
+            if call.get("name") == "write_summary_report" and call.get("report"):
+                last_report = call["report"]
+    if last_report:
+        print()
+        print(last_report.rstrip())
+
     print(
         f"\n[meta] iterations={result.iterations} "
         f"duration={result.total_duration_ms:.0f} ms"

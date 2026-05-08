@@ -1,11 +1,13 @@
 """
 Tests for the synthetic Snapdragon dataset generator.
 
-These tests cover the contract from section 10 of the project brief:
-    * The dataset has exactly 10,000 rows
+These tests cover the contract from section 10 of the project brief,
+extended for multi-day data:
+    * The dataset has DAYS_DEFAULT * TOTAL_CHIPS rows (70,000 by default)
     * All required columns are present
-    * Normal hours (00:00 to 13:59) yield above 90 percent
-    * Drift hours  (14:00 to 23:59) yield between 60 and 75 percent
+    * The last day has the drift signal; earlier days are clean
+    * Normal hours (00:00 to 13:59) yield above 90 percent across all days
+    * Last-day drift hours (14:00 to 23:59) yield between 60 and 75 percent
     * The fixed random seed produces identical output across runs
 """
 
@@ -24,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from data.generate_data import (  # noqa: E402  (import after sys.path tweak)
+    DAYS_DEFAULT,
     DRIFT_START_HOUR,
     TOTAL_CHIPS,
     generate_dataset,
@@ -51,7 +54,7 @@ def df() -> pd.DataFrame:
 
 
 def test_row_count(df: pd.DataFrame) -> None:
-    assert len(df) == TOTAL_CHIPS == 10_000
+    assert len(df) == DAYS_DEFAULT * TOTAL_CHIPS == 70_000
 
 
 def test_columns_present(df: pd.DataFrame) -> None:
@@ -79,17 +82,35 @@ def test_failure_reason_only_when_failed(df: pd.DataFrame) -> None:
 
 
 def test_normal_hour_yield_above_90_percent(df: pd.DataFrame) -> None:
+    """Hours 00-13 across every day are normal, yield should be very high."""
     hours = df["timestamp"].dt.hour
     normal = df[hours < DRIFT_START_HOUR]
     yield_pct = (normal["test_result"] == "PASS").mean()
     assert yield_pct > 0.90, f"normal-hour yield was {yield_pct:.1%}"
 
 
-def test_drift_hour_yield_in_band(df: pd.DataFrame) -> None:
-    hours = df["timestamp"].dt.hour
-    drift = df[hours >= DRIFT_START_HOUR]
+def test_drift_hour_yield_in_band_on_last_day(df: pd.DataFrame) -> None:
+    """Drift is only injected on the last day. Hours 14-23 of that day
+    should land in the 60-75 percent yield band."""
+    last_day = df["timestamp"].dt.date.max()
+    last_day_df = df[df["timestamp"].dt.date == last_day]
+    last_hours = last_day_df["timestamp"].dt.hour
+    drift = last_day_df[last_hours >= DRIFT_START_HOUR]
     yield_pct = (drift["test_result"] == "PASS").mean()
-    assert 0.60 <= yield_pct <= 0.75, f"drift-hour yield was {yield_pct:.1%}, expected 60 to 75 percent"
+    assert 0.60 <= yield_pct <= 0.75, (
+        f"last-day drift-hour yield was {yield_pct:.1%}, expected 60-75 percent"
+    )
+
+
+def test_earlier_days_are_clean(df: pd.DataFrame) -> None:
+    """Days other than the last should NOT carry the drift signal."""
+    days = sorted(df["timestamp"].dt.date.unique())
+    last_day = days[-1]
+    earlier_days_df = df[df["timestamp"].dt.date != last_day]
+    yield_pct = (earlier_days_df["test_result"] == "PASS").mean()
+    assert yield_pct > 0.95, (
+        f"earlier-days yield was {yield_pct:.1%}, expected > 95 percent (no drift)"
+    )
 
 
 def test_seed_is_reproducible() -> None:
@@ -111,13 +132,16 @@ def test_all_chips_are_sd8gen5_3nm(df: pd.DataFrame) -> None:
 
 
 def test_drift_hour_failed_chips_match_narrative(df: pd.DataFrame) -> None:
-    """The agent's storyline says failed chips average ~42 TOPS and ~4.5W.
-
-    This guards against future generator tweaks accidentally undoing the
-    NPU-domain drift signal.
+    """The agent's storyline says failed drift-day chips average ~42 TOPS
+    and ~4.5W. This guards against future generator tweaks accidentally
+    undoing the NPU-domain drift signal.
     """
-    hours = df["timestamp"].dt.hour
-    failed_drift = df[(hours >= DRIFT_START_HOUR) & (df["test_result"] == "FAIL")]
+    last_day = df["timestamp"].dt.date.max()
+    last_day_df = df[df["timestamp"].dt.date == last_day]
+    last_hours = last_day_df["timestamp"].dt.hour
+    failed_drift = last_day_df[
+        (last_hours >= DRIFT_START_HOUR) & (last_day_df["test_result"] == "FAIL")
+    ]
     assert len(failed_drift) > 0
     assert failed_drift["npu_tops"].mean() < 45, (
         f"failed drift-hour chips averaged {failed_drift['npu_tops'].mean():.2f} TOPS"
