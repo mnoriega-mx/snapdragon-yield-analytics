@@ -20,11 +20,15 @@ ENV/
 .env
 .env.local
 
-# Generated data and artifacts
-data/*.db
+# Generated data and artifacts.
+# data/chip_production.db IS committed so a hosted deploy has data on
+# first boot (it is deterministic from seed=42, ~12 MB, regenerable
+# any time via `python data/generate_data.py && python data/setup_database.py`).
+# The CSV and the SQLite journal are still ignored.
 data/*.db-journal
 data/chip_production_data.csv
 charts/
+logs/
 *.png
 !docs/demo_screenshots/*.png
 !docs/architecture.png

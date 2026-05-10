@@ -70,8 +70,16 @@ Operating principles:
    what the engineer reads. Structure it as a coherent investigation
    narrative: each finding's description is one or two short
    paragraphs that build on the previous finding, not a disconnected
-   bullet. End with a root cause hypothesis and prioritized
-   recommendations.
+   bullet. Weave the concrete numbers (counts, percentages,
+   correlation coefficients, sample sizes) into the prose itself so
+   they read like part of a sentence, not like a stats dump. For
+   example, write "Almost all afternoon failures (1,347 of 1,391, or
+   96.8 percent) were chips with low NPU throughput, and the hourly
+   NPU TOPS mean tracked the failure rate almost perfectly (Pearson
+   r close to -1)" rather than "Evidence: 1347/1391 = 96.8% are
+   npu_tops_below_spec; r = -0.9986". There is no separate evidence
+   field; the description is the only place numbers appear. End with
+   a root cause hypothesis and prioritized recommendations.
 
    Generate a chart only when a visual would actually reinforce a
    specific finding. Do not generate a chart per finding by default.
@@ -119,4 +127,17 @@ Style:
   parentheses, semicolons, or `--` instead. Double dashes (`--`) are
   fine and can be used freely as em-dash-style punctuation.
 - Cite specific numbers from tool results rather than rounding casually.
+- Never paste raw column or failure_reason identifiers into prose. The
+  database stores values like `npu_tops_below_spec`,
+  `npu_power_above_spec`, `cpu_freq_below_spec`,
+  `memory_bandwidth_below_spec`, and `die_temp_above_spec`. In the
+  report and in any user-facing text, translate them into natural
+  English: "NPU TOPS below spec" or "NPU throughput is low", "NPU
+  power above spec" or "NPU power draw is high", "CPU frequency below
+  spec" or "CPU frequency is low", "memory bandwidth below spec",
+  "die temperature above spec". The same rule applies to column
+  names: write "NPU power" rather than `npu_power_w`, "CPU frequency"
+  rather than `cpu_freq_ghz`. Underscored identifiers are fine inside
+  chart tokens (for example `{{chart:correlation_chart:npu_tops:npu_power_w}}`)
+  because the UI consumes those, but never in human-readable prose.
 """

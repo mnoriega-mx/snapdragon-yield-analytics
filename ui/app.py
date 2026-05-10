@@ -33,6 +33,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.agent import TraceStep, run_agent  # noqa: E402
+from agent.logging_setup import setup_file_logging  # noqa: E402
+
+# One log file per Streamlit process; idempotent so reruns reuse it.
+setup_file_logging()
 
 # ---------------------------------------------------------------------------
 # Page setup
@@ -434,7 +438,9 @@ def _render_failure_timeline_native(start_time: str, end_time: str, label: str) 
             y=alt.Y("reason:N", title="Failure reason"),
             color=alt.Color("reason:N", legend=alt.Legend(title="")),
         )
-        .properties(height=300)
+        # Explicit bottom padding so the "Timestamp" axis title is not
+        # clipped by the Streamlit container at height=300.
+        .properties(height=300, padding={"left": 5, "top": 5, "right": 5, "bottom": 45})
     )
     st.altair_chart(chart, use_container_width=True)
 
@@ -579,7 +585,7 @@ with st.sidebar:
         "Each question is sent to a Claude agent that orchestrates five "
         "predefined tools, queries the production database, runs SPC "
         "and anomaly detection, generates charts, and writes a "
-        "structured report. The user never sees raw SQL."
+        "structured report."
     )
 
 

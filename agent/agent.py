@@ -19,6 +19,7 @@ trace; the CLI runner on Day 2 just prints it.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ load_dotenv(override=True)
 DEFAULT_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 DEFAULT_MAX_TOKENS = 2048
 DEFAULT_MAX_ITERATIONS = 8
+
+_log = logging.getLogger("snapdragon_agent.agent")
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +259,11 @@ def run_agent(
     trace: list[TraceStep] = []
     started = time.time()
 
+    _log.info(
+        "run start question=%r model=%s max_iterations=%d",
+        question, model, max_iterations,
+    )
+
     for iteration in range(1, max_iterations + 1):
         step_start = time.time()
         response = client.messages.create(
@@ -299,11 +307,23 @@ def run_agent(
             if on_step is not None:
                 on_step(step)
             answer = "\n\n".join(step.text_blocks).strip()
+            total_ms = (time.time() - started) * 1000
+            _log.info(
+                "iteration=%d stop=%s duration_ms=%.0f "
+                "tokens_in=%d tokens_out=%d cache_r=%d cache_w=%d",
+                iteration, step.stop_reason, step.duration_ms,
+                step.input_tokens, step.output_tokens,
+                step.cache_read_tokens, step.cache_creation_tokens,
+            )
+            _log.info(
+                "run end iterations=%d total_duration_ms=%.0f answer_chars=%d",
+                iteration, total_ms, len(answer),
+            )
             return AgentResult(
                 answer=answer or "(no text returned)",
                 trace=trace,
                 iterations=iteration,
-                total_duration_ms=(time.time() - started) * 1000,
+                total_duration_ms=total_ms,
             )
 
         # Otherwise execute each tool_use block and gather tool_result blocks.
@@ -330,10 +350,24 @@ def run_agent(
         messages.append({"role": "user", "content": tool_result_blocks})
         step.duration_ms = (time.time() - step_start) * 1000
         trace.append(step)
+        _log.info(
+            "iteration=%d stop=%s duration_ms=%.0f "
+            "tokens_in=%d tokens_out=%d cache_r=%d cache_w=%d "
+            "tool_calls=%s",
+            iteration, step.stop_reason, step.duration_ms,
+            step.input_tokens, step.output_tokens,
+            step.cache_read_tokens, step.cache_creation_tokens,
+            [c["name"] for c in step.tool_calls],
+        )
         if on_step is not None:
             on_step(step)
 
     # Hit the iteration cap without a final answer.
+    total_ms = (time.time() - started) * 1000
+    _log.warning(
+        "run end iterations=%d total_duration_ms=%.0f cap_reached=true",
+        max_iterations, total_ms,
+    )
     return AgentResult(
         answer=(
             "Agent exceeded the maximum number of iterations "
@@ -341,5 +375,5 @@ def run_agent(
         ),
         trace=trace,
         iterations=max_iterations,
-        total_duration_ms=(time.time() - started) * 1000,
+        total_duration_ms=total_ms,
     )

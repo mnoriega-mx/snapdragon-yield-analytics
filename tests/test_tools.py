@@ -565,8 +565,10 @@ def test_chart_schema_in_list():
 
 _VALID_FINDING = {
     "category": "NPU performance",
-    "description": "NPU TOPS dropped from 50.5 to 47.8 starting at 14:00.",
-    "evidence": "hourly mean fell to 47.6 by 17:00 with sample size 416",
+    "description": (
+        "NPU TOPS dropped from 50.5 to 47.8 starting at 14:00; the "
+        "hourly mean fell to 47.6 by 17:00 across 416 chips."
+    ),
 }
 
 _VALID_ROOT_CAUSE = (
@@ -591,7 +593,7 @@ def test_report_rejects_non_list_findings():
 
 
 def test_report_rejects_finding_missing_field():
-    bad = [{"category": "x", "description": "y"}]  # no evidence
+    bad = [{"category": "x"}]  # no description
     with pytest.raises(ValueError):
         tools.write_summary_report(
             findings=bad,
@@ -601,7 +603,7 @@ def test_report_rejects_finding_missing_field():
 
 
 def test_report_rejects_finding_field_wrong_type():
-    bad = [{"category": "x", "description": "y", "evidence": 123}]
+    bad = [{"category": "x", "description": 123}]
     with pytest.raises(ValueError):
         tools.write_summary_report(
             findings=bad,
@@ -655,7 +657,7 @@ def test_report_contains_all_sections():
     assert "## Root cause hypothesis" in md
     assert "## Bottom line" not in md
     assert "## Recommendations" in md
-    assert "synthetic Snapdragon production data" in md
+    assert "Snapdragon production data" in md
 
 
 def test_report_renders_finding_fields():
@@ -667,7 +669,7 @@ def test_report_renders_finding_fields():
     md = result["report"]
     assert _VALID_FINDING["category"] in md
     assert _VALID_FINDING["description"] in md
-    assert _VALID_FINDING["evidence"] in md
+    assert "_Evidence:" not in md
 
 
 def test_report_numbers_recommendations():

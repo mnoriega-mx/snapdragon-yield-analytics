@@ -26,7 +26,7 @@ The full brief lives at `docs/project_brief.md`. Read that before doing anything
 
 **Day 5 done.** Tool 5 (`write_summary_report`) renders a markdown yield report from `findings` (list of `{category, description, evidence}`), `root_cause_hypothesis`, and `recommendations`. `run_agent` gained an optional `on_step` callback called after each iteration; each `tool_call` entry now also records `chart_path` (for `generate_chart`) and `report` (for `write_summary_report`) so a UI can pull artifacts out without re-parsing the raw tool result. The system prompt got a new principle nudging the agent to finish substantive yield investigations with `write_summary_report`. The Streamlit UI lives at `ui/app.py`: sidebar with sample questions and project framing, question input, live `st.status` panel that streams each tool call as it happens, then the rendered layout (charts inline, report markdown, agent prose answer, full trace in a collapsible expander). Run with `streamlit run ui/app.py`.
 
-**Day 6 in progress.**
+**Day 6 done.**
 
 - **Multi-day data layer.** `data/generate_data.py` was refactored to produce N production days (default `DAYS_DEFAULT = 7`), with the drift excursion injected only on the LAST day. Wafer ids and chip ids are unique across days (W000-W099 on day 1, W100-W199 on day 2, etc.). The bundled database (`data/chip_production.db`) now holds 70,000 rows. The agent's system prompt teaches it that "today" means the most recent day, found via `query_database(query_type='summary')`'s `last_timestamp` field. So the canonical drift day for the demo is 2026-04-07, not 2026-04-01.
 - **Dashboard panel in Streamlit.** Above the question input, the app shows a "Today's production" section: KPI cards (chips tested, yield with delta vs prior 6-day average, failures with friendly labels, status pill: Alert/Watch/OK), a comparison caption, and a 24-hour yield trend line chart. Data is fetched via `query_database` with a 60-second `st.cache_data` TTL. Sample-question buttons use `on_click` callbacks (canonical Streamlit pattern), and the live trace shows friendly labels ("Generating spc chart for npu_tops") instead of raw function calls.
@@ -35,10 +35,20 @@ The full brief lives at `docs/project_brief.md`. Read that before doing anything
 - **Prompt tweaks.** Added a "data swim lane" principle (no VRMs, voltage rails, fab steps). Style block now allows `--` (double dashes); only em dashes are forbidden.
 - **Response restructure.** The structured markdown from `write_summary_report` is now the canonical user-facing deliverable. The agent's final assistant text is a single short acknowledgement; there is no separate prose "cover note" or "bottom line". `write_summary_report` was renamed `bottom_line` to `root_cause_hypothesis` (matching the brief), and the section header changed from "## Bottom line" to "## Root cause hypothesis". Findings carry `{{chart:...}}` tokens inline in their `description` field where a chart visually reinforces a specific finding; the Streamlit UI's `_render_markdown_with_charts` expands those tokens into inline charts. The UI no longer echoes the question or renders the prose answer when a report exists.
 - **`load_dotenv(override=True)`** so an empty shell-level `ANTHROPIC_API_KEY` cannot mask the real key in `.env`.
+- **Basic logging.** New `agent/logging_setup.py` exposes `setup_file_logging(log_dir)` which is idempotent and adds a per-run FileHandler at `logs/agent_YYYYMMDD_HHMMSS.log`. The library never installs handlers itself: `agent/run.py` (CLI) and `ui/app.py` (Streamlit) call it once at startup; tests do not, so the suite never writes log files. `tools.execute_tool` logs each call with name, duration, args, and status (`ok`, `error`, `crash`, `unknown`). `agent.run_agent` logs run start, every iteration with token usage and tool names, and run end (or `cap_reached=true` when the iteration cap fires). `logs/` is gitignored.
+- **End-to-end agent test.** `tests/test_agent_e2e.py` drives `run_agent` against a `FakeAnthropicClient` that returns scripted Anthropic responses. Coverage: full yield-investigation happy path (4 tool calls then end_turn), iteration safety cap, tool errors flowing back to Claude as a `tool_result` block, the `on_step` callback firing once per iteration in order, prompt-cache breakpoints landing on the last tool and last message block, token usage extraction from `response.usage`, and unknown-tool-name handling. Real-API calls do not happen here.
+- **Formal scenario validation.** `scripts/validate_scenarios.py` runs the three brief scenarios (Normal operation, Anomaly investigation, Specific lookup) against the live Anthropic API. Each scenario carries soft expectations (concept presence, tools called); the script prints PASS/FAIL on stdout and writes a markdown summary to `docs/scenario_validation.md`. Invoke before recording the demo: `python scripts/validate_scenarios.py`. Exit code is 0 only when every expectation passes.
 
-**Day 6 still pending.** End-to-end agent test (`tests/test_agent_e2e.py`), formal scenario validation, basic logging.
+Current test status: 74 tests passing (12 data, 55 tools, 7 e2e).
 
-Current test status: 67 tests passing (12 data, 55 tools).
+**Day 7 in progress: deployment prep done.**
+
+- **Stderr log handler.** `setup_file_logging` now attaches both a FileHandler (per-run file in `logs/`) and a StreamHandler on `sys.stderr`. The stderr stream is what gives a hosted deployment a useful live log view: every tool call shows up in Streamlit Community Cloud's manage-page log viewer in real time, since the per-run file there is ephemeral.
+- **`data/chip_production.db` is committed.** Previously gitignored; now eligible to be tracked so a fresh clone (which is what the hosting platform does) has data on first boot. The DB is ~12 MB and deterministic from `seed=42`; rebuild it locally and recommit if the generator changes. `data/*.db-journal` and `data/chip_production_data.csv` stay ignored.
+- **Deployment guide.** `docs/deploy.md` walks through deploying to Streamlit Community Cloud: pushing to a public GitHub repo, creating the app at `share.streamlit.io`, setting `ANTHROPIC_API_KEY` as a secret, verifying the manage-page log viewer captures tool-call lines, and known things (cold start after sleep, API cost per question, regenerating the DB).
+- **Hosting decision.** Streamlit Community Cloud is the target. Free, native Streamlit support, GitHub-driven redeploys, integrated log viewer, public HTTPS URL.
+
+Day 7 still pending: the live deployment itself, README, architecture diagram, demo screenshots, demo video, LICENSE.
 
 ## Critical project rules (do not violate)
 
@@ -75,18 +85,24 @@ These come from section 13 of the brief. They are non-negotiable.
 │   ├── prompts.py              System prompt for the agent
 │   ├── tools.py                Tool catalog (5 of 5 tools implemented)
 │   ├── agent.py                Claude API tool-use loop
+│   ├── logging_setup.py        Per-run file logging helper
 │   └── run.py                  CLI runner: python -m agent.run "your question"
 ├── ui/
 │   └── app.py                  Streamlit UI: streamlit run ui/app.py
+├── scripts/
+│   └── validate_scenarios.py   Run the 3 brief scenarios; writes docs/scenario_validation.md
 ├── tests/
 │   ├── conftest.py             Shared fixtures (chip_db builds a fresh test DB)
 │   ├── test_data_generation.py
-│   └── test_tools.py
+│   ├── test_tools.py
+│   └── test_agent_e2e.py       Agent loop tests against a FakeAnthropicClient
 ├── docs/
 │   ├── project_brief.md        The full brief
 │   ├── architecture.png        (TBD on Day 7)
+│   ├── scenario_validation.md  (generated by scripts/validate_scenarios.py)
 │   └── demo_screenshots/       (TBD on Day 7)
 ├── charts/                     (gitignored, populated at runtime)
+├── logs/                       (gitignored, one log file per run)
 ├── requirements.txt
 ├── setup.sh                    One-command setup
 ├── .env.example                Template; copy to .env, then add real key
@@ -130,6 +146,12 @@ python -m agent.run --trace "Why did yield drop today?"
 Launch the Streamlit UI:
 ```
 streamlit run ui/app.py
+```
+
+Run the formal scenario validation (hits the live API, writes `docs/scenario_validation.md`):
+```
+python scripts/validate_scenarios.py
+python scripts/validate_scenarios.py --scenario "Anomaly investigation"
 ```
 
 ## Mauricio's preferences

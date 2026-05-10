@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from .agent import run_agent
+from .logging_setup import setup_file_logging
 
 
 def _read_question(args: argparse.Namespace) -> str:
@@ -58,8 +59,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    log_path = setup_file_logging()
     question = _read_question(args)
-    print(f"[question] {question}\n", flush=True)
+    print(f"[question] {question}", flush=True)
+    print(f"[log] {log_path}\n", flush=True)
 
     result = run_agent(question, max_iterations=args.max_iterations)
 

@@ -20,7 +20,9 @@ to the same dictionaries on Days 3 to 5.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +35,8 @@ matplotlib.use("Agg")  # render to file without needing a display
 import matplotlib.pyplot as plt  # noqa: E402  (must follow matplotlib.use)
 import pandas as pd
 from scipy.stats import pearsonr
+
+_log = logging.getLogger("snapdragon_agent.tools")
 
 # ---------------------------------------------------------------------------
 # Database location
@@ -815,10 +819,14 @@ def _draw_failure_timeline(
     ax.set_title(
         f"Failure timeline\n{start_time} to {end_time} (synthetic data)"
     )
+    # Reserve extra bottom space: autofmt_xdate rotates the tick labels,
+    # and on some windows tight_layout alone leaves the "Timestamp"
+    # x-axis label clipped at the bottom of the PNG.
     fig.tight_layout()
+    fig.subplots_adjust(bottom=0.18)
 
     path = out_dir / _new_filename("failure_timeline")
-    fig.savefig(path, dpi=120)
+    fig.savefig(path, dpi=120, bbox_inches="tight", pad_inches=0.2)
     plt.close(fig)
     return path
 
@@ -932,7 +940,7 @@ def generate_chart(
 # Tool 5: write_summary_report
 # ---------------------------------------------------------------------------
 
-REQUIRED_FINDING_FIELDS = ("category", "description", "evidence")
+REQUIRED_FINDING_FIELDS = ("category", "description")
 
 
 def write_summary_report(
@@ -948,10 +956,12 @@ def write_summary_report(
     numbered list of recommendations.
 
     Args:
-        findings: List of `{category, description, evidence}` dicts.
-            All three fields are required strings. The description may
-            contain `{{chart:...}}` tokens that the UI expands into an
-            inline chart at that position.
+        findings: List of `{category, description}` dicts. Both fields
+            are required strings. Concrete numbers live inside the
+            description prose, woven into the narrative; there is no
+            separate evidence field. The description may contain
+            `{{chart:...}}` tokens that the UI expands into an inline
+            chart at that position.
         root_cause_hypothesis: One short paragraph (two to four
             sentences) explaining what the evidence converges on and
             naming the affected subsystem (NPU, CPU, memory, thermal).
@@ -987,7 +997,7 @@ def write_summary_report(
     lines.append(
         "_Generated "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M')} "
-        "from synthetic Snapdragon production data._"
+        "from Snapdragon production data._"
     )
     lines.append("")
 
@@ -998,8 +1008,6 @@ def write_summary_report(
             lines.append(f"### {f['category']}")
             lines.append("")
             lines.append(f["description"].strip())
-            lines.append("")
-            lines.append(f"_Evidence: {f['evidence'].strip()}_")
             lines.append("")
 
     lines.append("## Root cause hypothesis")
@@ -1238,12 +1246,12 @@ WRITE_SUMMARY_REPORT_SCHEMA: dict[str, Any] = {
             "findings": {
                 "type": "array",
                 "description": (
-                    "Ordered list of categorized findings with evidence. "
-                    "Each finding has a short category label, a "
-                    "plain-English description, and an evidence string "
-                    "that cites concrete numbers from earlier tool "
-                    "results. Findings should read together as a "
-                    "coherent narrative, not as disconnected bullets."
+                    "Ordered list of categorized findings. Each finding "
+                    "has a short category label and a plain-English "
+                    "description that weaves the concrete numbers from "
+                    "earlier tool results into the narrative. Findings "
+                    "should read together as a coherent investigation, "
+                    "not as disconnected bullets."
                 ),
                 "items": {
                     "type": "object",
@@ -1259,18 +1267,18 @@ WRITE_SUMMARY_REPORT_SCHEMA: dict[str, Any] = {
                             "type": "string",
                             "description": (
                                 "One or two short paragraphs describing "
-                                "the finding. May contain a "
+                                "the finding in plain English. Cite "
+                                "concrete numbers (counts, percentages, "
+                                "correlations) inline as part of the "
+                                "narrative; do not append a separate "
+                                "stats line. May contain a "
                                 "{{chart:...}} token on its own line "
                                 "where a chart visually reinforces the "
                                 "claim."
                             ),
                         },
-                        "evidence": {
-                            "type": "string",
-                            "description": "Concrete numeric evidence from earlier tool results.",
-                        },
                     },
-                    "required": ["category", "description", "evidence"],
+                    "required": ["category", "description"],
                 },
             },
             "root_cause_hypothesis": {
@@ -1316,6 +1324,24 @@ TOOL_IMPLEMENTATIONS: dict[str, Callable[..., dict[str, Any]]] = {
 }
 
 
+def _format_args_for_log(tool_input: dict[str, Any]) -> str:
+    """Compact, log-friendly rendering of a tool's input dict.
+
+    Long strings are truncated and long lists collapsed so a single tool
+    call always fits on one log line. Mirrors the trace formatting used
+    in the CLI runner; kept separate to avoid an import cycle.
+    """
+    parts: list[str] = []
+    for k, v in tool_input.items():
+        if isinstance(v, list) and len(v) > 4:
+            parts.append(f"{k}=[{len(v)} items]")
+        elif isinstance(v, str) and len(v) > 60:
+            parts.append(f"{k}={v[:57]!r}...")
+        else:
+            parts.append(f"{k}={v!r}")
+    return "{" + ", ".join(parts) + "}"
+
+
 def execute_tool(name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
     """Dispatch a tool_use block to its Python implementation.
 
@@ -1323,17 +1349,44 @@ def execute_tool(name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
     from a Claude tool_use content block. We catch any error and return
     it as a structured payload so Claude can read it and try a different
     approach.
+
+    Each call is logged on the `snapdragon_agent.tools` logger with its
+    name, duration, and status. The library does not install a handler;
+    callers (CLI runner, Streamlit app, scenario harness) opt in via
+    `agent.logging_setup.setup_file_logging`.
     """
     impl = TOOL_IMPLEMENTATIONS.get(name)
     if impl is None:
+        _log.warning("tool=%s status=unknown", name)
         return {"error": f"unknown tool: {name}"}
 
+    args_repr = _format_args_for_log(tool_input)
+    started = time.perf_counter()
     try:
-        return impl(**tool_input)
+        result = impl(**tool_input)
     except (ValueError, FileNotFoundError) as exc:
-        return {"error": f"{type(exc).__name__}: {exc}"}
+        duration_ms = (time.perf_counter() - started) * 1000
+        msg = f"{type(exc).__name__}: {exc}"
+        _log.warning(
+            "tool=%s status=error duration_ms=%.0f args=%s error=%s",
+            name, duration_ms, args_repr, msg,
+        )
+        return {"error": msg}
     except Exception as exc:  # noqa: BLE001  (we log everything for the agent)
-        return {"error": f"unhandled error in {name}: {type(exc).__name__}: {exc}"}
+        duration_ms = (time.perf_counter() - started) * 1000
+        msg = f"unhandled error in {name}: {type(exc).__name__}: {exc}"
+        _log.exception(
+            "tool=%s status=crash duration_ms=%.0f args=%s",
+            name, duration_ms, args_repr,
+        )
+        return {"error": msg}
+
+    duration_ms = (time.perf_counter() - started) * 1000
+    _log.info(
+        "tool=%s status=ok duration_ms=%.0f args=%s",
+        name, duration_ms, args_repr,
+    )
+    return result
 
 
 def serialize_tool_result(result: dict[str, Any]) -> str:
