@@ -1,0 +1,17 @@
+# Streamlit theme for Snapdragon Yield Analytics.
+#
+# Dark, Qualcomm-inspired palette. Background is deep navy (close to
+# Qualcomm's navy/midnight from their brand identity), primary accent is
+# Snapdragon red. The injected CSS in ui/app.py layers a card system and
+# typographic rhythm on top of this base.
+
+[theme]
+base = "dark"
+primaryColor = "#E1261C"             # Snapdragon red (primary action / focus)
+backgroundColor = "#0B1220"          # Deep navy page background
+secondaryBackgroundColor = "#111A2E" # Panel / card background
+textColor = "#E6EAF2"                # Off-white body text
+font = "sans serif"
+
+[server]
+runOnSave = true

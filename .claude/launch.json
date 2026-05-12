@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "snapdragon-ui",
+      "runtimeExecutable": "venv/bin/streamlit",
+      "runtimeArgs": ["run", "ui/app.py", "--server.port", "8515", "--server.headless", "true"],
+      "port": 8515
+    }
+  ]
+}
