@@ -78,7 +78,10 @@ CUSTOM_CSS = f"""
 <style>
 /* === Page chrome === */
 .block-container {{
-  padding-top: 1.2rem !important;
+  /* Top padding is generous so our page header clears the Streamlit
+     Cloud toolbar (Share / Star / GitHub / kebab) that overlays the
+     top-right corner on deployed apps. */
+  padding-top: 4.5rem !important;
   padding-bottom: 3rem !important;
   padding-left: 1rem !important;
   padding-right: 1rem !important;
@@ -87,6 +90,26 @@ CUSTOM_CSS = f"""
   margin-right: auto !important;
 }}
 .stApp {{ background: {COLORS["bg"]}; font-size: 16px; color: {COLORS["text"]}; }}
+
+/* Streamlit Cloud's top toolbar icons inherit the original dark theme
+   color. Force them to dark on our light theme so they're visible. */
+header[data-testid="stHeader"] [data-testid="stToolbar"] button,
+header[data-testid="stHeader"] [data-testid="stToolbar"] a,
+header[data-testid="stHeader"] [data-testid="stToolbar"] svg,
+header[data-testid="stHeader"] button svg {{
+  color: {COLORS["text"]} !important;
+  fill: {COLORS["text"]} !important;
+}}
+header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover,
+header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover {{
+  color: {COLORS["accent"]} !important;
+  background: rgba(50, 83, 220, 0.08) !important;
+}}
+header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover svg,
+header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover svg {{
+  fill: {COLORS["accent"]} !important;
+  color: {COLORS["accent"]} !important;
+}}
 /* Only cover prose-bearing elements. Avoid blanket-coloring spans/labels
    because the status pill and delta chip use spans whose colors are
    status-driven (red ANOMALOUS, green up, etc). */
