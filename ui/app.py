@@ -57,19 +57,20 @@ st.set_page_config(
 # Shared color tokens used by both CSS and Altair charts. Keeping them in one
 # place is what makes the dashboard, charts, and report read as one product.
 COLORS = {
-    "bg": "#0B1220",
-    "panel": "#111A2E",
-    "panel_2": "#16213B",
-    "border": "rgba(255, 255, 255, 0.08)",
-    "border_strong": "rgba(255, 255, 255, 0.16)",
-    "text": "#E6EAF2",
-    "muted": "#8A95AB",
-    "accent": "#E1261C",        # Snapdragon red, primary
-    "cyan": "#54C7EC",          # Secondary line color
-    "success": "#3DDC97",
-    "warning": "#F2B341",
-    "danger": "#FF6B62",
-    "grid": "rgba(255,255,255,0.06)",
+    "bg": "#F5F7FA",
+    "panel": "#FFFFFF",
+    "panel_2": "#EEF2F8",
+    "border": "rgba(15, 23, 42, 0.08)",
+    "border_strong": "rgba(15, 23, 42, 0.18)",
+    "text": "#0B1220",
+    "muted": "#5B6577",
+    "accent": "#3253DC",        # Qualcomm blue, primary
+    "accent_dark": "#1F3CA8",   # Darker variant for gradients
+    "cyan": "#1B8BB8",          # Secondary line color, darker for light bg
+    "success": "#1FA86A",       # Darker green for white-background contrast
+    "warning": "#C97A0E",       # Darker amber
+    "danger": "#C8261C",        # Darker red
+    "grid": "rgba(15, 23, 42, 0.07)",
 }
 
 
@@ -85,7 +86,14 @@ CUSTOM_CSS = f"""
   margin-left: auto !important;
   margin-right: auto !important;
 }}
-.stApp {{ background: {COLORS["bg"]}; font-size: 16px; }}
+.stApp {{ background: {COLORS["bg"]}; font-size: 16px; color: {COLORS["text"]}; }}
+/* Only cover prose-bearing elements. Avoid blanket-coloring spans/labels
+   because the status pill and delta chip use spans whose colors are
+   status-driven (red ANOMALOUS, green up, etc). */
+.stApp p, .stApp li,
+.stApp .stMarkdown, .stApp [data-testid="stMarkdownContainer"] {{
+  color: {COLORS["text"]};
+}}
 
 /* Hide the default Streamlit header chrome for a cleaner look */
 header[data-testid="stHeader"] {{ background: transparent; }}
@@ -95,25 +103,36 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 24px 28px;
-  background: linear-gradient(135deg, #14213D 0%, #0B1220 70%);
+  padding: 26px 30px;
+  background: {COLORS["panel"]};
   border: 1px solid {COLORS["border"]};
   border-radius: 16px;
   margin: 0 0 32px 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  position: relative;
+  overflow: hidden;
+}}
+.snd-header::before {{
+  /* A vivid Qualcomm-blue accent bar along the left edge. */
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, {COLORS["accent"]} 0%, {COLORS["accent_dark"]} 100%);
 }}
 .snd-mark {{
   width: 50px; height: 50px;
   display: grid; place-items: center;
-  background: linear-gradient(135deg, {COLORS["accent"]} 0%, #8E1411 100%);
+  background: linear-gradient(135deg, {COLORS["accent"]} 0%, {COLORS["accent_dark"]} 100%);
   border-radius: 12px;
   font-weight: 800; font-size: 19px;
   color: white; letter-spacing: 0.02em;
-  box-shadow: 0 10px 26px rgba(225, 38, 28, 0.38);
+  box-shadow: 0 10px 26px rgba(50, 83, 220, 0.38);
 }}
 .snd-title-block {{ display: flex; flex-direction: column; }}
 .snd-title {{
-  font-size: 1.65rem; font-weight: 700;
-  color: {COLORS["text"]}; letter-spacing: -0.01em; line-height: 1.15;
+  font-size: 1.7rem; font-weight: 700;
+  color: {COLORS["text"]}; letter-spacing: -0.015em; line-height: 1.15;
 }}
 .snd-subtitle {{
   font-size: 0.98rem; color: {COLORS["muted"]}; margin-top: 4px;
@@ -121,17 +140,18 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .snd-spacer {{ flex: 1; }}
 .snd-tag {{
   font-size: 0.78rem; font-weight: 600;
-  color: {COLORS["muted"]};
-  border: 1px solid {COLORS["border_strong"]};
+  color: {COLORS["accent"]};
+  background: rgba(50, 83, 220, 0.08);
+  border: 1px solid rgba(50, 83, 220, 0.30);
   padding: 6px 14px; border-radius: 999px;
   letter-spacing: 0.08em; text-transform: uppercase;
 }}
 
 /* === Section labels === */
 .snd-section {{
-  font-size: 0.82rem; font-weight: 600;
+  font-size: 0.82rem; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase;
-  color: {COLORS["muted"]};
+  color: {COLORS["accent"]};
   margin: 10px 0 16px 0;
 }}
 
@@ -149,15 +169,21 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   padding: 22px 24px;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }}
 .snd-card-hero::before {{
-  /* Subtle Snapdragon-red accent stripe along the top of the hero card */
+  /* Status-driven accent stripe along the top of the hero card. The
+     color is set by snd-card-hero-{{ok|warn|alert}} modifiers so the
+     stripe agrees with the status pill in the top-right corner. */
   content: "";
   position: absolute;
   left: 0; right: 0; top: 0;
   height: 3px;
   background: linear-gradient(90deg, {COLORS["accent"]} 0%, transparent 80%);
 }}
+.snd-card-hero-ok::before    {{ background: linear-gradient(90deg, {COLORS["success"]} 0%, transparent 80%); }}
+.snd-card-hero-warn::before  {{ background: linear-gradient(90deg, {COLORS["warning"]} 0%, transparent 80%); }}
+.snd-card-hero-alert::before {{ background: linear-gradient(90deg, {COLORS["danger"]}  0%, transparent 80%); }}
 .snd-card-label {{
   font-size: 0.78rem; font-weight: 600;
   color: {COLORS["muted"]};
@@ -188,9 +214,9 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }}
-.snd-delta-up   {{ background: rgba(61, 220, 151, 0.12); color: {COLORS["success"]}; }}
-.snd-delta-down {{ background: rgba(225, 38, 28, 0.18);  color: {COLORS["danger"]}; }}
-.snd-delta-flat {{ background: rgba(138, 149, 171, 0.14); color: {COLORS["muted"]}; }}
+.snd-delta-up   {{ background: rgba(31, 168, 106, 0.14); color: {COLORS["success"]}; }}
+.snd-delta-down {{ background: rgba(200, 38, 28, 0.14);  color: {COLORS["danger"]}; }}
+.snd-delta-flat {{ background: rgba(91, 101, 119, 0.14); color: {COLORS["muted"]}; }}
 
 /* Status pill, top-right corner of the hero card */
 .snd-status {{
@@ -206,15 +232,15 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   background: currentColor;
   box-shadow: 0 0 10px currentColor;
 }}
-.snd-status-ok    {{ background: rgba(61, 220, 151, 0.14); color: {COLORS["success"]}; }}
-.snd-status-warn  {{ background: rgba(242, 179, 65, 0.16); color: {COLORS["warning"]}; }}
-.snd-status-alert {{ background: rgba(225, 38, 28, 0.20);  color: {COLORS["danger"]}; }}
+.snd-status-ok    {{ background: rgba(31, 168, 106, 0.14); color: {COLORS["success"]}; }}
+.snd-status-warn  {{ background: rgba(201, 122, 14, 0.14); color: {COLORS["warning"]}; }}
+.snd-status-alert {{ background: rgba(200, 38, 28, 0.14);  color: {COLORS["danger"]}; }}
 
 /* === Sample-question chips === */
 /* Streamlit secondary buttons are restyled as compact chips. The primary
    Run button keeps its own treatment further down. */
 div[data-testid="stButton"] > button[kind="secondary"] {{
-  background: rgba(255, 255, 255, 0.03) !important;
+  background: {COLORS["panel"]} !important;
   border: 1px solid {COLORS["border_strong"]} !important;
   color: {COLORS["text"]} !important;
   font-weight: 500 !important;
@@ -229,18 +255,19 @@ div[data-testid="stButton"] > button[kind="secondary"] {{
 }}
 div[data-testid="stButton"] > button[kind="secondary"]:hover {{
   border-color: {COLORS["accent"]} !important;
-  background: rgba(225, 38, 28, 0.08) !important;
-  color: {COLORS["text"]} !important;
+  background: rgba(50, 83, 220, 0.10) !important;
+  color: {COLORS["accent_dark"]} !important;
+  box-shadow: 0 2px 8px rgba(50, 83, 220, 0.15) !important;
 }}
 
 /* === Primary Run button === */
 div[data-testid="stButton"] > button[kind="primary"] {{
-  background: linear-gradient(135deg, {COLORS["accent"]} 0%, #B81910 100%) !important;
+  background: linear-gradient(135deg, {COLORS["accent"]} 0%, {COLORS["accent_dark"]} 100%) !important;
   border: 0 !important;
   font-weight: 600 !important;
   font-size: 1rem !important;
   letter-spacing: 0.02em;
-  box-shadow: 0 6px 18px rgba(225, 38, 28, 0.35) !important;
+  box-shadow: 0 6px 18px rgba(50, 83, 220, 0.35) !important;
   padding: 13px 28px !important;
   border-radius: 12px !important;
 }}
@@ -249,7 +276,7 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {{
   transform: translateY(-1px);
 }}
 div[data-testid="stButton"] > button[kind="primary"]:disabled {{
-  background: rgba(255,255,255,0.05) !important;
+  background: {COLORS["panel_2"]} !important;
   box-shadow: none !important;
   color: {COLORS["muted"]} !important;
   transform: none;
@@ -266,7 +293,7 @@ div[data-testid="stButton"] > button[kind="primary"]:disabled {{
 }}
 [data-testid="stTextInput"] input:focus {{
   border-color: {COLORS["accent"]} !important;
-  box-shadow: 0 0 0 3px rgba(225, 38, 28, 0.20) !important;
+  box-shadow: 0 0 0 3px rgba(50, 83, 220, 0.22) !important;
 }}
 [data-testid="stTextInput"] label {{
   font-size: 0.78rem !important;
@@ -284,14 +311,27 @@ div[data-testid="stButton"] > button[kind="primary"]:disabled {{
 }}
 
 /* === Expander === */
+/* Streamlit's expander has separate header (summary) and content panes,
+   each with a dark-theme bg baked into emotion CSS. Force both light. */
 [data-testid="stExpander"] {{
   background: {COLORS["panel"]} !important;
   border: 1px solid {COLORS["border"]} !important;
   border-radius: 12px !important;
+  overflow: hidden;
+}}
+[data-testid="stExpander"] details,
+[data-testid="stExpander"] details > summary,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"],
+[data-testid="stExpander"] details > div {{
+  background: {COLORS["panel"]} !important;
+  color: {COLORS["text"]} !important;
 }}
 [data-testid="stExpander"] summary {{
   font-weight: 600;
-  color: {COLORS["text"]};
+  color: {COLORS["text"]} !important;
+}}
+[data-testid="stExpander"] svg {{
+  fill: {COLORS["text"]} !important;
 }}
 
 /* === Dividers softer, with a touch of red on the long ones === */
@@ -304,7 +344,7 @@ hr {{
 
 /* === Code blocks in trace === */
 [data-testid="stCodeBlock"] {{
-  background: #0A0F1B !important;
+  background: {COLORS["panel_2"]} !important;
   border: 1px solid {COLORS["border"]};
   border-radius: 8px;
 }}
@@ -399,6 +439,10 @@ hr {{
   padding-right: 1rem !important;
   margin-left: auto !important;
   margin-right: auto !important;
+  /* Streamlit bakes a dark navy into this wrapper via its theme. Force
+     it to inherit the page background so the chat strip blends with
+     the rest of the light theme. */
+  background: {COLORS["bg"]} !important;
 }}
 /* The inner stBottomBlockContainer ships with its own 1rem horizontal
    padding which stacks on top of the parent above, leaving the chat
@@ -419,18 +463,36 @@ hr {{
      the way around. A low-contrast / low-alpha border looks dimmer on
      the curved corners than on the straight edges, which reads as
      "faded corners" on dark backgrounds. */
-  border: 1px solid #4B5A7E !important;
+  border: 1px solid {COLORS["border_strong"]} !important;
   border-radius: 14px !important;
-  box-shadow: none !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }}
 [data-testid="stChatInput"]:focus-within {{
   border-color: {COLORS["accent"]} !important;
-  box-shadow: 0 0 0 3px rgba(225, 38, 28, 0.20) !important;
+  box-shadow: 0 0 0 3px rgba(50, 83, 220, 0.22) !important;
 }}
-/* The inner wrapper ships with its own background + border-radius that
-   peeks out behind the outer border at the rounded corners, creating
-   a "two stacked rectangles" look. Flatten it. */
-[data-testid="stChatInput"] > div {{
+[data-testid="stChatInputSubmitButton"] {{
+  color: {COLORS["accent"]} !important;
+  background: rgba(50, 83, 220, 0.10) !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease;
+}}
+[data-testid="stChatInputSubmitButton"]:hover:not(:disabled) {{
+  background: rgba(50, 83, 220, 0.20) !important;
+  color: {COLORS["accent_dark"]} !important;
+}}
+[data-testid="stChatInputSubmitButton"]:disabled {{
+  color: {COLORS["muted"]} !important;
+  background: transparent !important;
+}}
+[data-testid="stChatInputSubmitButton"] svg {{
+  fill: currentColor !important;
+}}
+/* The inner wrappers (and Streamlit's BaseUI textarea container) ship
+   with their own dark backgrounds + border-radii that peek out behind
+   the outer border at the rounded corners. Flatten them all. */
+[data-testid="stChatInput"] > div,
+[data-testid="stChatInput"] div {{
   background-color: transparent !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -467,8 +529,8 @@ hr {{
 }}
 [data-testid="stMarkdownContainer"] strong {{ color: {COLORS["text"]}; }}
 [data-testid="stMarkdownContainer"] code {{
-  background: rgba(225, 38, 28, 0.10);
-  color: #FFB4AE;
+  background: rgba(50, 83, 220, 0.14);
+  color: #B6C5FF;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -739,9 +801,10 @@ def _render_dashboard(data: dict[str, Any] | None) -> None:
         unsafe_allow_html=True,
     )
 
+    hero_stripe_cls = status_cls.replace("snd-status-", "snd-card-hero-")
     kpi_html = f"""
     <div class="snd-kpi-grid">
-      <div class="snd-card snd-card-hero">
+      <div class="snd-card snd-card-hero {hero_stripe_cls}">
         <div class="snd-card-label">Yield</div>
         <div class="snd-card-value">{today_yield:.1%}{_delta_chip(delta_pp)}</div>
         <div class="snd-card-sub">{prior_caption}</div>
@@ -1432,7 +1495,10 @@ def _inject_chat_action_buttons(*, is_running: bool, has_history: bool) -> None:
               if (!hidden) return false;  // retry, hidden button not mounted yet
               hideEl(findContainer(doc.querySelector('.snd-stop-anchor')));
               hideEl(findContainer(hidden));
-              if (existing) return true;
+              // Always remove + re-create so the click handler's closure
+              // belongs to THIS iframe. Otherwise after a rerun the twin
+              // can outlive its source iframe and stop firing.
+              if (existing) existing.remove();
               const chatInput = doc.querySelector('[data-testid="stChatInput"]');
               if (!chatInput) return false;
               const sendBtn = sendBtnAnchor(chatInput);
@@ -1443,8 +1509,8 @@ def _inject_chat_action_buttons(*, is_running: bool, has_history: bool) -> None:
               vis.innerHTML = '&#9632;';
               vis.title = 'Stop';
               vis.style.cssText =
-                'background:rgba(225,38,28,0.18);color:#FF6B62;'
-                + 'border:1px solid rgba(225,38,28,0.5);border-radius:50%;'
+                'background:rgba(50,83,220,0.18);color:#3253DC;'
+                + 'border:1px solid rgba(50,83,220,0.5);border-radius:50%;'
                 + 'width:30px;height:30px;margin-right:6px;cursor:pointer;'
                 + 'display:inline-flex;align-items:center;justify-content:center;'
                 + 'font-size:11px;padding:0;flex-shrink:0;line-height:1;';
@@ -1468,7 +1534,8 @@ def _inject_chat_action_buttons(*, is_running: bool, has_history: bool) -> None:
               if (!hidden) return false;  // retry, hidden button not mounted yet
               hideEl(findContainer(doc.querySelector('.snd-clear-anchor')));
               hideEl(findContainer(hidden));
-              if (existing) return true;
+              // Always remove + re-create. See attachStop for the why.
+              if (existing) existing.remove();
               const chatInput = doc.querySelector('[data-testid="stChatInput"]');
               if (!chatInput) return false;
               const stopVis = chatInput.querySelector('.snd-stop-btn');
@@ -1481,21 +1548,21 @@ def _inject_chat_action_buttons(*, is_running: bool, has_history: bool) -> None:
               vis.textContent = 'Clear chat';
               vis.title = 'Clear chat history';
               vis.style.cssText =
-                'background:transparent;color:#8A95AB;'
-                + 'border:1px solid rgba(138,149,171,0.35);border-radius:14px;'
+                'background:transparent;color:#5B6577;'
+                + 'border:1px solid rgba(15,23,42,0.18);border-radius:14px;'
                 + 'height:28px;padding:0 12px;margin-right:8px;cursor:pointer;'
                 + 'display:inline-flex;align-items:center;justify-content:center;'
                 + 'font-size:12px;font-weight:500;font-family:inherit;'
                 + 'flex-shrink:0;line-height:1;white-space:nowrap;'
                 + 'transition:all 0.15s;';
               vis.addEventListener('mouseenter', function() {{
-                vis.style.color = '#E6EAF2';
-                vis.style.borderColor = 'rgba(225,38,28,0.5)';
-                vis.style.background = 'rgba(225,38,28,0.08)';
+                vis.style.color = '#1F3CA8';
+                vis.style.borderColor = 'rgba(50,83,220,0.55)';
+                vis.style.background = 'rgba(50,83,220,0.10)';
               }});
               vis.addEventListener('mouseleave', function() {{
-                vis.style.color = '#8A95AB';
-                vis.style.borderColor = 'rgba(138,149,171,0.35)';
+                vis.style.color = '#5B6577';
+                vis.style.borderColor = 'rgba(15,23,42,0.18)';
                 vis.style.background = 'transparent';
               }});
               vis.addEventListener('click', function(e) {{
