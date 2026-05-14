@@ -91,14 +91,20 @@ CUSTOM_CSS = f"""
 }}
 .stApp {{ background: {COLORS["bg"]}; font-size: 16px; color: {COLORS["text"]}; }}
 
-/* Streamlit Cloud's top toolbar icons inherit the original dark theme
-   color. Force them to dark on our light theme so they're visible. */
+/* Streamlit Cloud's top toolbar icons (Share / Star / GitHub / kebab)
+   inherit the original dark theme color. We only set `color` on the
+   wrappers so that SVG paths using fill="currentColor" or
+   stroke="currentColor" inherit our text color. Setting fill/stroke
+   directly on path/svg backfires: Streamlit's kebab icon has a
+   transparent background path with fill="none", and a blanket fill
+   override turns the whole icon into a solid dark square. */
+header[data-testid="stHeader"],
 header[data-testid="stHeader"] [data-testid="stToolbar"] button,
 header[data-testid="stHeader"] [data-testid="stToolbar"] a,
 header[data-testid="stHeader"] [data-testid="stToolbar"] svg,
+header[data-testid="stHeader"] button,
 header[data-testid="stHeader"] button svg {{
   color: {COLORS["text"]} !important;
-  fill: {COLORS["text"]} !important;
 }}
 header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover,
 header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover {{
@@ -107,7 +113,6 @@ header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover {{
 }}
 header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover svg,
 header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover svg {{
-  fill: {COLORS["accent"]} !important;
   color: {COLORS["accent"]} !important;
 }}
 /* Only cover prose-bearing elements. Avoid blanket-coloring spans/labels
