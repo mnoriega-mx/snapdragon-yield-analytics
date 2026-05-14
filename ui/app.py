@@ -92,28 +92,41 @@ CUSTOM_CSS = f"""
 .stApp {{ background: {COLORS["bg"]}; font-size: 16px; color: {COLORS["text"]}; }}
 
 /* Streamlit Cloud's top toolbar icons (Share / Star / GitHub / kebab)
-   inherit the original dark theme color. We only set `color` on the
-   wrappers so that SVG paths using fill="currentColor" or
-   stroke="currentColor" inherit our text color. Setting fill/stroke
-   directly on path/svg backfires: Streamlit's kebab icon has a
-   transparent background path with fill="none", and a blanket fill
-   override turns the whole icon into a solid dark square. */
+   inherit the original dark theme color. Three-layer fix:
+   1. Set `color` on wrappers so SVGs using currentColor inherit.
+   2. Force `fill` on visible shapes (path/circle/rect/polygon with an
+      explicit non-"none" fill), since the GitHub/Share/Star icons
+      hardcode light fills. The :not([fill="none"]) guard skips
+      transparent background paths so the kebab doesn't render as a
+      solid square.
+   3. Force opacity:1 and filter:none because the Cloud chrome ships
+      icons at reduced opacity, which reads as invisible on light. */
 header[data-testid="stHeader"],
+header[data-testid="stHeader"] [data-testid="stToolbar"],
 header[data-testid="stHeader"] [data-testid="stToolbar"] button,
 header[data-testid="stHeader"] [data-testid="stToolbar"] a,
 header[data-testid="stHeader"] [data-testid="stToolbar"] svg,
 header[data-testid="stHeader"] button,
 header[data-testid="stHeader"] button svg {{
   color: {COLORS["text"]} !important;
+  opacity: 1 !important;
+  filter: none !important;
+}}
+header[data-testid="stHeader"] [data-testid="stToolbar"] svg path:not([fill="none"]),
+header[data-testid="stHeader"] [data-testid="stToolbar"] svg circle:not([fill="none"]),
+header[data-testid="stHeader"] [data-testid="stToolbar"] svg rect:not([fill="none"]),
+header[data-testid="stHeader"] [data-testid="stToolbar"] svg polygon:not([fill="none"]),
+header[data-testid="stHeader"] button svg path:not([fill="none"]) {{
+  fill: {COLORS["text"]} !important;
 }}
 header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover,
 header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover {{
   color: {COLORS["accent"]} !important;
   background: rgba(50, 83, 220, 0.08) !important;
 }}
-header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover svg,
-header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover svg {{
-  color: {COLORS["accent"]} !important;
+header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover svg path:not([fill="none"]),
+header[data-testid="stHeader"] [data-testid="stToolbar"] a:hover svg path:not([fill="none"]) {{
+  fill: {COLORS["accent"]} !important;
 }}
 /* Only cover prose-bearing elements. Avoid blanket-coloring spans/labels
    because the status pill and delta chip use spans whose colors are
