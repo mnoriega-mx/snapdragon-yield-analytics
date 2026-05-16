@@ -16,7 +16,7 @@ The dataset and product framing are tied to Qualcomm's actual stack: Snapdragon 
 
 The app is deployed on Streamlit Community Cloud. The live URL is shared with recruiters directly rather than published here, so the Anthropic API budget behind the demo stays predictable. The repository is fully runnable locally; see "How to Run It" below.
 
-A 2 to 3 minute walkthrough video and full-page screenshots will be added to this section once recorded.
+[![Watch the demo](docs/demo_screenshots/preview.png)](https://github.com/mnoriega-mx/snapdragon-yield-analytics/releases/download/v1.0/demo.mp4)
 
 ## Architecture
 
