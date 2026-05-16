@@ -16,7 +16,11 @@ The dataset and product framing are tied to Qualcomm's actual stack: Snapdragon 
 
 The app is deployed on Streamlit Community Cloud. The live URL is shared with recruiters directly rather than published here, so the Anthropic API budget behind the demo stays predictable. The repository is fully runnable locally; see "How to Run It" below.
 
-[![Watch the demo](docs/demo_screenshots/preview.png)](https://youtu.be/FCCGSN_Ipb8)
+<a href="https://youtu.be/FCCGSN_Ipb8" target="_blank">
+  <img src="docs/demo_screenshots/preview.png" alt="Watch the demo on YouTube" width="100%">
+</a>
+
+<p><a href="https://youtu.be/FCCGSN_Ipb8" target="_blank">▶ Watch the 2-minute demo on YouTube</a></p>
 
 ## Architecture
 
