@@ -20,7 +20,7 @@ The app is deployed on Streamlit Community Cloud. The live URL is shared with re
   <img src="docs/demo_screenshots/preview.png" alt="Watch the demo on YouTube" width="100%">
 </a>
 
-<p><a href="https://youtu.be/FCCGSN_Ipb8" target="_blank">▶ Watch the 2-minute demo on YouTube</a></p>
+<p><a href="https://youtu.be/FCCGSN_Ipb8" target="_blank">▶ Watch the 2-minute demo</a></p>
 
 ## Architecture
 
